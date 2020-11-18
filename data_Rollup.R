@@ -45,13 +45,18 @@ allSites <- read_csv("allSites_21.csv") %>%
 allSites %<>% 
   mutate(., 
          current_SDY_3s = `3KFDFY21`,
-         current_SDY_4s = rowSums(select(., PKFDFY21:PKHSEnhancedFY21), na.rm = TRUE),
-         current_EDY_3s = rowSums(select(., ChildCare3YrFY21:CT3YrFY21), na.rm = TRUE),
-         current_EDY_4s = rowSums(select(., ChildCare4YrFY21:CT4YrFY21), na.rm = TRUE)
+         current_SDY_4s = rowSums(select(., PKFDFY21:PKHSEnhancedFY21), 
+                                  na.rm = TRUE),
+         current_EDY_3s = rowSums(select(., ChildCare3YrFY21:CT3YrFY21), 
+                                  na.rm = TRUE),
+         current_EDY_4s = rowSums(select(., ChildCare4YrFY21:CT4YrFY21),
+                                  na.rm = TRUE)
          ) %>% 
   mutate(.,
-         total_SDY = rowSums(select(., current_SDY_3s, current_SDY_4s), na.rm = TRUE),
-         total_EDY = rowSums(select(., current_EDY_3s, current_EDY_4s), na.rm = TRUE),
+         total_SDY = rowSums(select(., current_SDY_3s, current_SDY_4s),
+                             na.rm = TRUE),
+         total_EDY = rowSums(select(., current_EDY_3s, current_EDY_4s),
+                             na.rm = TRUE),
          current_Pgm_Model = case_when(total_SDY > 0 & total_EDY > 0 ~ "edySDY",
                               total_SDY > 0 ~ "sdyOnly", 
                               total_EDY > 0 ~ "edyOnly")
@@ -63,8 +68,10 @@ awards %<>%
          edy3_Awarded = CC_3s, 
          edy4_Awarded = CC_4s
          ) %>% 
-  mutate(total_SDY_Awarded = rowSums(select(., sdy3_Awarded, sdy4_Awarded), na.rm = TRUE),
-         total_EDY_Awarded = rowSums(select(., edy3_Awarded, edy4_Awarded), na.rm = TRUE),
+  mutate(total_SDY_Awarded = rowSums(select(., sdy3_Awarded, sdy4_Awarded), 
+                                     na.rm = TRUE),
+         total_EDY_Awarded = rowSums(select(., edy3_Awarded, edy4_Awarded),
+                                     na.rm = TRUE),
          awarded_Pgm_Model = case_when(total_SDY_Awarded > 0 & total_EDY_Awarded > 0 ~ "edySDY",
                                        total_SDY_Awarded > 0 ~ "sdyOnly",
                                        total_EDY_Awarded > 0 ~ "edyOnly"))
@@ -72,11 +79,49 @@ awards %<>%
 #Data Joins & Manipulation ----
 
 combined <- left_join(awards, allSites, by = c("DoeSiteId" = "SiteID")) %>% 
-  mutate(total_CurrentSeats = rowSums(select(., total_SDY, total_EDY), na.rm = TRUE),
+  filter(., awarded_Pgm_Model == "edySDY") %>% 
+  mutate_if(is.numeric, ~replace_na(., 0)) %>% 
+  mutate(total_CurrentSeats = rowSums(select(., total_SDY, total_EDY), 
+                                      na.rm = TRUE),
          total_AwardSeats = rowSums(select(., total_SDY_Awarded, total_EDY_Awarded),
                                     na.rm = TRUE), 
          change_Pgm_Model = if_else(current_Pgm_Model == awarded_Pgm_Model, 
                                     "model_Same", "model_Different")) %>% 
-  unite(., modelChange, current_Pgm_Model, awarded_Pgm_Model, sep = "->", remove = FALSE)
+  unite(., modelChange, current_Pgm_Model, awarded_Pgm_Model, sep = "->", 
+        remove = FALSE) %>% 
+  mutate(.,
+         pgmModel_3s = if_else(sdy3_Awarded > 0 & edy3_Awarded > 0, 
+                               "edySDY_3", "not_Mixed_3s"),
+         pgmModel_4s = if_else(sdy4_Awarded > 0 & edy4_Awarded > 0, 
+                               "edySDY_4", "not_Mixed_4s"),
+         new_EDY = if_else((current_EDY_3s == 0 & edy3_Awarded > 0) | (current_EDY_4s == 0 & edy4_Awarded > 0),
+                           "new_EDY_Program", "alreadyServing_EDY"),
+         new_EDY_3s = if_else(current_EDY_3s == 0 & edy3_Awarded > 0, 
+                              "edy_3_New", "alreadyServing_EDY3"),
+         new_EDY_4s = if_else(current_EDY_4s == 0 & edy4_Awarded > 0, 
+                              "edy_4_New", "alreadyServing_EDY4"),
+         new_SDY = if_else((current_SDY_3s == 0 & sdy3_Awarded > 0) | (current_SDY_4s == 0 & sdy4_Awarded > 0), 
+                           "new_SDY_Program", "alreadyServing_SDY"),
+         new_SDY_3s = if_else(current_SDY_3s == 0 & sdy3_Awarded > 0,
+                              "sdy_3_New", "alreadyServing_SDY3"), 
+         new_SDY_4s = if_else(current_SDY_4s == 0 & sdy4_Awarded > 0, 
+                              "sdy_4_New", "alreadyServing_SDY4")
+  ) %>%  
+  mutate_at(vars(modelChange, pgmModel_3s, pgmModel_4s, new_EDY, new_EDY_3s, 
+                        new_EDY_4s, new_SDY, new_SDY_3s, new_SDY_4s), as.factor)# %>% 
+  # mutate(., idk = case_when((current_EDY_3s == 0 & edy3_Awarded > 0) & (current_EDY_4s == 0 & edy4_Awarded > 0) ~ "New: EDY3 & 4",
+  #                           current_EDY_3s == 0 & edy3_Awarded > 0 ~ "New: EDY 3",
+  #                           current_EDY_4s == 0 & edy4_Awarded > 0 ~ "New: EDY 4"
+                            
 
+testPivot <- combined %>% pivot_longer(., pgmModel_3s:new_SDY_4s, names_to = "modeltype")
 
+new_EDY_3s <- combined %>% 
+  filter(pgmModel_3s == "edySDY_3") %>% 
+  count(new_EDY_3s
+        )
+
+new_EDY_4s <- combined %>% 
+  filter(pgmModel_4s == "edySDY_4") %>% 
+  count(new_EDY_4s
+        )
