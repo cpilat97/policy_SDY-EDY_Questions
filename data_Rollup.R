@@ -1,6 +1,6 @@
 library(tidyverse)
 library(magrittr)
-
+library(googlesheets4)
 #Policy (Kayla - HKhor@schools.nyc.gov) requested the following information: 
 #   1. How many programs have been awarded SDY & EDY seats for the same age? 
 #   2. How many of these programs have been awarded EDY for the first time? 
@@ -53,13 +53,13 @@ allSites %<>%
                                   na.rm = TRUE)
          ) %>% 
   mutate(.,
-         total_SDY = rowSums(select(., current_SDY_3s, current_SDY_4s),
+         total_Current_SDY = rowSums(select(., current_SDY_3s, current_SDY_4s),
                              na.rm = TRUE),
-         total_EDY = rowSums(select(., current_EDY_3s, current_EDY_4s),
+         total_Current_EDY = rowSums(select(., current_EDY_3s, current_EDY_4s),
                              na.rm = TRUE),
-         current_Pgm_Model = case_when(total_SDY > 0 & total_EDY > 0 ~ "edySDY",
-                              total_SDY > 0 ~ "sdyOnly", 
-                              total_EDY > 0 ~ "edyOnly")
+         current_Pgm_Model = case_when(total_Current_SDY > 0 & total_Current_EDY > 0 ~ "edySDY",
+                              total_Current_SDY > 0 ~ "sdyOnly", 
+                              total_Current_EDY > 0 ~ "edyOnly")
   )
 
 awards %<>% 
@@ -81,7 +81,7 @@ awards %<>%
 combined <- left_join(awards, allSites, by = c("DoeSiteId" = "SiteID")) %>% 
   filter(., awarded_Pgm_Model == "edySDY") %>% 
   mutate_if(is.numeric, ~replace_na(., 0)) %>% 
-  mutate(total_CurrentSeats = rowSums(select(., total_SDY, total_EDY), 
+  mutate(total_CurrentSeats = rowSums(select(., total_Current_SDY, total_Current_EDY), 
                                       na.rm = TRUE),
          total_AwardSeats = rowSums(select(., total_SDY_Awarded, total_EDY_Awarded),
                                     na.rm = TRUE), 
@@ -108,13 +108,8 @@ combined <- left_join(awards, allSites, by = c("DoeSiteId" = "SiteID")) %>%
                               "sdy_4_New", "alreadyServing_SDY4")
   ) %>%  
   mutate_at(vars(modelChange, pgmModel_3s, pgmModel_4s, new_EDY, new_EDY_3s, 
-                        new_EDY_4s, new_SDY, new_SDY_3s, new_SDY_4s), as.factor)# %>% 
-  # mutate(., idk = case_when((current_EDY_3s == 0 & edy3_Awarded > 0) & (current_EDY_4s == 0 & edy4_Awarded > 0) ~ "New: EDY3 & 4",
-  #                           current_EDY_3s == 0 & edy3_Awarded > 0 ~ "New: EDY 3",
-  #                           current_EDY_4s == 0 & edy4_Awarded > 0 ~ "New: EDY 4"
-                            
+                        new_EDY_4s, new_SDY, new_SDY_3s, new_SDY_4s), as.factor)
 
-testPivot <- combined %>% pivot_longer(., pgmModel_3s:new_SDY_4s, names_to = "modeltype")
 
 new_EDY_3s <- combined %>% 
   filter(pgmModel_3s == "edySDY_3") %>% 
@@ -125,3 +120,39 @@ new_EDY_4s <- combined %>%
   filter(pgmModel_4s == "edySDY_4") %>% 
   count(new_EDY_4s
         )
+
+new_SDY_3s <- combined %>% 
+  filter(pgmModel_3s == "edySDY_3") %>% 
+  count(new_SDY_3s
+  )
+
+new_SDY_4s <- combined %>% 
+  filter(pgmModel_4s == "edySDY_4") %>% 
+  count(new_SDY_4s
+  )
+
+combined %<>% 
+  mutate(., hasSiteID = if_else(DoeSiteId != "#No SiteID", "yes","no"))
+
+combined %>% count(hasSiteID)
+
+table(combined$hasSiteID, combined$new_EDY)
+table(combined$hasSiteID[combined$new_EDY_3s == "edySDY_3"], combined$new_EDY_3s[combined$new_EDY_3s == "edySDY_3"])
+
+pgModel_3s <- combined %>% filter(pgmModel_3s == "edySDY_3")
+pgModel_4s <- combined %>% filter(pgmModel_4s == "edySDY_4")
+
+table(pgModel_3s$hasSiteID, pgModel_3s$new_EDY_3s)
+table(pgModel_3s$hasSiteID, pgModel_3s$new_SDY_3s)
+table(pgModel_4s$hasSiteID, pgModel_4s$new_EDY_4s)
+table(pgModel_4s$hasSiteID, pgModel_4s$new_SDY_4s)
+
+newEDY3 <- combined %>% filter(new_EDY_3s == "edy_3_New")
+test <- combined %>% filter(pgmModel_3s == "edySDY_3")
+
+
+
+ss <- gs4_get("https://docs.google.com/spreadsheets/d/1O_3sB88whOcLJNQlZN8C2mG-QXmL8Xddgts8obZlUkQ/edit#gid=0")
+sheet_write(combined, ss = ss, sheet = "All Sites EDY-SDY Awarded")
+sheet_write(newEDY3, ss = ss, sheet = "Edy3")
+sheet_write(test, ss = ss, sheet = "test3s")
